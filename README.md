@@ -1,5 +1,9 @@
 # client-encryption-python
-[![](https://developer.mastercard.com/_/_/src/global/assets/svg/mcdev-logo-dark.svg)](https://developer.mastercard.com/)
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://developer.mastercard.com/_/_/src/global/assets/svg/mcdev-logo-light.svg">
+  <img src="https://developer.mastercard.com/_/_/src/global/assets/svg/mcdev-logo-dark.svg" alt="mastercard developers logo">
+</picture>
 
 [![](https://github.com/Mastercard/client-encryption-python/workflows/Build%20&%20Test/badge.svg)](https://github.com/Mastercard/client-encryption-python/actions?query=workflow%3A%22Build+%26+Test%22)
 [![](https://sonarcloud.io/api/project_badges/measure?project=Mastercard_client-encryption-python&metric=alert_status)](https://sonarcloud.io/dashboard?id=Mastercard_client-encryption-python)
@@ -133,6 +137,15 @@ decrypted_response_payload = decrypt_payload(body, config)
   "encryptedValueFieldName": "encryptedData",
   "encryptionCertificate": "./path/to/public.cert",
   "decryptionKey": "./path/to/your/private.key",
+}
+```
+You can also pass in a PKCS12 file with the password to decrypt it:
+```json
+{
+  // .... rest of the config
+
+  "decryptionKey": "./path/to/your/keyStore.p12",
+  "decryptionKeyPassword": "the-password",
 }
 ```
 
@@ -272,6 +285,15 @@ decrypted_response_payload = decrypt_payload(body, config)
   "encryptionCertificate": "./path/to/public.cert",
   "decryptionKey": "./path/to/your/private.key",
   "oaepPaddingDigestAlgorithm": "SHA256"
+}
+```
+You can also pass in a PKCS12 file with the password to decrypt it:
+```json
+{
+  // .... rest of the config
+
+  "decryptionKey": "./path/to/your/keyStore.p12",
+  "decryptionKeyPassword": "the-password",
 }
 ```
 
