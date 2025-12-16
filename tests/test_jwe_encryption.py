@@ -1,5 +1,9 @@
+import json
 import unittest
+import hmac
+import hashlib
 import client_encryption.jwe_encryption as to_test
+from client_encryption.encryption_exception import EncryptionError
 from client_encryption.jwe_encryption_config import JweEncryptionConfig
 from tests import get_mastercard_config_for_test
 
@@ -107,3 +111,71 @@ class JweEncryptionTest(unittest.TestCase):
         payload = to_test.decrypt_payload(encrypted_payload, self._config)
         self.assertNotIn("encryptedValue", payload)
         self.assertDictEqual(decrypted_payload, payload)
+
+    def test_decrypt_payload_should_verify_hmac_when_enabled(self):
+        config = self.__build_config_with_hmac(True)
+
+        encrypted_payload = {
+            "encryptedValue": "eyJlbmMiOiJBMTI4Q0JDLUhTMjU2IiwiYWxnIjoiUlNBLU9BRVAtMjU2In0.2GzZlB3scifhqlzIV2Rxk1TwiWL35e0AtcI9MFusG9jv9zGrJ8BapJx73PlFu69S0IAR7hXpqwzD7-UzmHUdrxB7izbMm9TNDpznHIuTaJWSRngD5Zui_rUXETL0GJG8dERx7IngqTltfzZanhDnjDNfKaowD6pFSEVN-Ff-pTeJqLMPs5504DtnYGD_uhQjvFmREIBgQTGEINzT88PXwLTAVBbWbAad_I-4Q12YwW_Y4yqmARCMTRWP-ixMrlSWCJlh6hz-biEotWNwGvp2pdhdiEP2VSvvUKHd7IngMWcMozOcoZQ1n18kWiFvt90fzNXSmzTjyGYSWUsa_mVouA.aX5mOSiXtilwYPFeTUFN_A.ZyAY79BAjG-QMQIhesj9bQ.TPZ2VYWdTLopCNkvMqUyuQ"
+        }
+
+        decrypted_payload = {"foo": "bar"}
+
+        payload = to_test.decrypt_payload(encrypted_payload, config)
+        self.assertDictEqual(decrypted_payload, payload)
+
+    def test_decrypt_payload_should_fail_when_hmac_invalid_and_enabled(self):
+        config = self.__build_config_with_hmac(True)
+
+        encrypted_value = "eyJlbmMiOiJBMTI4Q0JDLUhTMjU2IiwiYWxnIjoiUlNBLU9BRVAtMjU2In0.2GzZlB3scifhqlzIV2Rxk1TwiWL35e0AtcI9MFusG9jv9zGrJ8BapJx73PlFu69S0IAR7hXpqwzD7-UzmHUdrxB7izbMm9TNDpznHIuTaJWSRngD5Zui_rUXETL0GJG8dERx7IngqTltfzZanhDnjDNfKaowD6pFSEVN-Ff-pTeJqLMPs5504DtnYGD_uhQjvFmREIBgQTGEINzT88PXwLTAVBbWbAad_I-4Q12YwW_Y4yqmARCMTRWP-ixMrlSWCJlh6hz-biEotWNwGvp2pdhdiEP2VSvvUKHd7IngMWcMozOcoZQ1n18kWiFvt90fzNXSmzTjyGYSWUsa_mVouA.aX5mOSiXtilwYPFeTUFN_A.ZyAY79BAjG-QMQIhesj9bQ.TPZ2VYWdTLopCNkvMqUyuQ"
+        tampered_parts = encrypted_value.split(".")
+        tampered_parts[-1] = tampered_parts[-1][:-1] + ("A" if tampered_parts[-1][-1] != "A" else "B")
+        tampered_payload = {"encryptedValue": ".".join(tampered_parts)}
+
+        with self.assertRaises(EncryptionError):
+            to_test.decrypt_payload(tampered_payload, config)
+
+    def test_decrypt_payload_should_skip_hmac_when_disabled(self):
+        config = self.__build_config_with_hmac(False)
+
+        encrypted_value = "eyJlbmMiOiJBMTI4Q0JDLUhTMjU2IiwiYWxnIjoiUlNBLU9BRVAtMjU2In0.2GzZlB3scifhqlzIV2Rxk1TwiWL35e0AtcI9MFusG9jv9zGrJ8BapJx73PlFu69S0IAR7hXpqwzD7-UzmHUdrxB7izbMm9TNDpznHIuTaJWSRngD5Zui_rUXETL0GJG8dERx7IngqTltfzZanhDnjDNfKaowD6pFSEVN-Ff-pTeJqLMPs5504DtnYGD_uhQjvFmREIBgQTGEINzT88PXwLTAVBbWbAad_I-4Q12YwW_Y4yqmARCMTRWP-ixMrlSWCJlh6hz-biEotWNwGvp2pdhdiEP2VSvvUKHd7IngMWcMozOcoZQ1n18kWiFvt90fzNXSmzTjyGYSWUsa_mVouA.aX5mOSiXtilwYPFeTUFN_A.ZyAY79BAjG-QMQIhesj9bQ.TPZ2VYWdTLopCNkvMqUyuQ"
+        tampered_parts = encrypted_value.split(".")
+        tampered_parts[-1] = tampered_parts[-1][:-1] + ("A" if tampered_parts[-1][-1] != "A" else "B")
+        tampered_payload = {"encryptedValue": ".".join(tampered_parts)}
+
+        payload = to_test.decrypt_payload(tampered_payload, config)
+        self.assertEqual({"foo": "bar"}, payload)
+
+    def test_decrypt_payload_should_fail_when_hmac_missing_and_enabled(self):
+        config = self.__build_config_with_hmac(True)
+
+        encrypted_value = "eyJlbmMiOiJBMTI4Q0JDLUhTMjU2IiwiYWxnIjoiUlNBLU9BRVAtMjU2In0.2GzZlB3scifhqlzIV2Rxk1TwiWL35e0AtcI9MFusG9jv9zGrJ8BapJx73PlFu69S0IAR7hXpqwzD7-UzmHUdrxB7izbMm9TNDpznHIuTaJWSRngD5Zui_rUXETL0GJG8dERx7IngqTltfzZanhDnjDNfKaowD6pFSEVN-Ff-pTeJqLMPs5504DtnYGD_uhQjvFmREIBgQTGEINzT88PXwLTAVBbWbAad_I-4Q12YwW_Y4yqmARCMTRWP-ixMrlSWCJlh6hz-biEotWNwGvp2pdhdiEP2VSvvUKHd7IngMWcMozOcoZQ1n18kWiFvt90fzNXSmzTjyGYSWUsa_mVouA.aX5mOSiXtilwYPFeTUFN_A.ZyAY79BAjG-QMQIhesj9bQ.TPZ2VYWdTLopCNkvMqUyuQ"
+        missing_tag_payload = {"encryptedValue": ".".join(encrypted_value.split(".")[:-1])}
+
+        with self.assertRaises(EncryptionError):
+            to_test.decrypt_payload(missing_tag_payload, config)
+
+    def test_split_cbc_keys_should_reject_invalid_length(self):
+        with self.assertRaises(EncryptionError):
+            to_test._split_cbc_keys(b"short-key")
+
+    def test_compute_cbc_auth_tag_matches_reference(self):
+        mac_key = b"\x01" * 16
+        aad = b"header"
+        iv = b"\x02" * 16
+        cipher_text = b"\x03\x04"
+
+        expected_tag = hmac.new(mac_key, aad + iv + cipher_text + (len(aad) * 8).to_bytes(8, "big"), hashlib.sha256).digest()[:16]
+        computed_tag = to_test._compute_cbc_auth_tag(mac_key, aad, iv, cipher_text)
+
+        self.assertEqual(expected_tag, computed_tag)
+
+    def __build_config_with_hmac(self, enabled):
+        json_conf = json.loads(get_mastercard_config_for_test())
+        json_conf["enableCbcHmacVerification"] = enabled
+
+        conf = JweEncryptionConfig(json_conf)
+        conf._paths["$"]._to_encrypt = {"$": "$"}
+        conf._paths["$"]._to_decrypt = {"encryptedValue": "$"}
+
+        return conf
