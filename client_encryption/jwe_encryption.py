@@ -87,7 +87,7 @@ def decrypt_payload(payload, config, _params=None):
                 protected_header = encrypted_value[0]
                 header = json.loads(decode_jwe(protected_header))
                 cipher_text = decode_jwe(encrypted_value[3])
-                auth_tag = decode_jwe(encrypted_value[4]) if len(encrypted_value) > 4 else b""
+                auth_tag = decode_jwe(encrypted_value[4]) if len(encrypted_value) > 4 else None
                 decryption_method = header['enc']
 
                 if decryption_method == 'A128CBC-HS256':

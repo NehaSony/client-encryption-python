@@ -5,6 +5,11 @@ import hashlib
 import client_encryption.jwe_encryption as to_test
 from client_encryption.encryption_exception import EncryptionError
 from client_encryption.jwe_encryption_config import JweEncryptionConfig
+from client_encryption.encoding_utils import encode_bytes, url_encode_bytes
+from client_encryption.session_key_params import SessionKeyParams
+from cryptography.hazmat.primitives.serialization import PublicFormat, Encoding
+from Crypto.Cipher import PKCS1_OAEP
+from Crypto.PublicKey import RSA
 from tests import get_mastercard_config_for_test
 
 
@@ -159,6 +164,13 @@ class JweEncryptionTest(unittest.TestCase):
         with self.assertRaises(EncryptionError):
             to_test._split_cbc_keys(b"short-key")
 
+    def test_split_cbc_keys_should_split_mac_and_enc_halves(self):
+        cek = bytes(range(32))
+        mac_key, enc_key = to_test._split_cbc_keys(cek)
+
+        self.assertEqual(cek[:16], mac_key)
+        self.assertEqual(cek[16:], enc_key)
+
     def test_compute_cbc_auth_tag_matches_reference(self):
         mac_key = b"\x01" * 16
         aad = b"header"
@@ -169,6 +181,53 @@ class JweEncryptionTest(unittest.TestCase):
         computed_tag = to_test._compute_cbc_auth_tag(mac_key, aad, iv, cipher_text)
 
         self.assertEqual(expected_tag, computed_tag)
+
+    def test_verify_cbc_hmac_tag_should_pass_on_valid_tag(self):
+        mac_key = b"\x0a" * 16
+        aad = b"protected"
+        iv = b"\x0b" * 16
+        cipher_text = b"\x0c\x0d\x0e"
+        valid_tag = to_test._compute_cbc_auth_tag(mac_key, aad, iv, cipher_text)
+
+        # Should not raise
+        to_test._verify_cbc_hmac_tag(mac_key, aad, iv, cipher_text, valid_tag)
+
+    def test_verify_cbc_hmac_tag_should_raise_on_bad_tag(self):
+        mac_key = b"\x0a" * 16
+        aad = b"protected"
+        iv = b"\x0b" * 16
+        cipher_text = b"\x0c\x0d\x0e"
+        bad_tag = b"\x00" * 16
+
+        with self.assertRaises(EncryptionError):
+            to_test._verify_cbc_hmac_tag(mac_key, aad, iv, cipher_text, bad_tag)
+
+    def test_encrypt_and_decrypt_cbc_with_hmac_roundtrip(self):
+        config = self.__build_config_with_hmac(True)
+
+        # Deterministic CEK and IV for repeatable test
+        secret_key = bytes(range(32))
+        iv = b"\x11" * 16
+
+        public_bytes = config.encryption_certificate.public_key().public_bytes(Encoding.DER,
+                                                                                PublicFormat.SubjectPublicKeyInfo)
+        rsa_pub = RSA.import_key(public_bytes)
+        cipher = PKCS1_OAEP.new(rsa_pub, hashAlgo=to_test.SHA256)
+        encrypted_secret_key = cipher.encrypt(secret_key)
+
+        iv_encoded = encode_bytes(iv, config.data_encoding)
+        encrypted_key_value = url_encode_bytes(encrypted_secret_key)
+
+        params = SessionKeyParams(config, encrypted_key_value, iv_encoded, 'SHA256')
+        params._key = secret_key
+        params._iv = iv
+
+        payload = {"message": "Hello World"}
+
+        encrypted_payload = to_test.encrypt_payload(payload, config, params)
+        decrypted_payload = to_test.decrypt_payload(encrypted_payload, config)
+
+        self.assertDictEqual(payload, decrypted_payload)
 
     def __build_config_with_hmac(self, enabled):
         json_conf = json.loads(get_mastercard_config_for_test())
